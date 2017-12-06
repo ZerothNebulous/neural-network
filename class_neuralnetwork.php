@@ -2,13 +2,14 @@
     class NeuralNetwork {
         protected $nodeCount = array ();
         protected $nodeValue = array ();
-        protected $nodeThreshold = array ();
+        protected $nodeBias = array ();
+        protected $biasValue = array ();
         protected $edgeWeight = array ();
         protected $learningRate = array (0.1);
         protected $layerCount = 0;
         protected $previousWeightCorrection = array ();
+        protected $biasWeightCorrection = array ();
         protected $momentum = 0.8;
-        protected $isVerbose = true;
         protected $weightsInitialized = false;
 
         public $trainInputs = array ();
@@ -30,13 +31,32 @@
             }
             $this->nodeCount = $nodeCount;
             $this->layerCount = count($this->nodeCount);
+            $this->nodeBias = 
+            for($layer = 0; $layer <= $this->layerCount - 2; $layer++){
+                $this->setBias($layer, 1.0); //initialize bias nodes
+            }
         }
+
+        public function setBias($layer, $value){
+            $biasValue[$layer] = $value;
+        }
+
         public function getNodeWeight($layer, $nodeSource, $nodeDestination ){
             return $this->edgeWeight[$layer][$nodeSource][$nodeDestination];
         }
+
+        public function getBiasWeight($layer, $nodeDestination){
+            return $this->nodeBias[$layer][$nodeDestination];
+        }
+
+        public function getBiasValue($layer){
+            return $this->biasValue[$layer];
+        }
+
         public function getNodeCount($layer){
             return $this->nodeCount[$layer];
         }
+
         public function getNodeValue($layer, $node){
             return $this->nodeValue[$layer][$node];
         }
@@ -45,10 +65,10 @@
                 'layerCount' => $this->layerCount,
                 'nodeCount' => $this->nodeCount,
                 'edgeWeight' => $this->edgeWeight,
-                'nodeThreshold' => $this->nodeThreshold,
+                'nodeBias' => $this->nodeBias,
+                'biasValue' => $this->biasValue,
                 'learningRate' => $this->learningRate,
                 'momentum' => $this->momentum,
-                'isVerbose' => $this->isVerbose,
                 'weightsInitialized' => $this->weightsInitialized,
             );
         }
@@ -89,7 +109,8 @@
                         $edge_weight = $this->edgeWeight[$prev_layer][$prev_node][$node];
                         $node_value = $node_value + ($inputnode_value * $edge_weight);
                     }
-                    $node_value = $node_value - $this->nodeThreshold[$layer][$node];
+                    $bias_value = ($biasValue[$prev_layer] * $nodeBias[$prev_layer][$node])
+                    $node_value = $node_value + $bias_value;
                     $node_value = $this->activation($node_value);
                     $this->nodeValue[$layer][$node] = $node_value;
                 }
@@ -133,26 +154,13 @@
         public function getControlDataIDs(){
             return $this->controlDataID;
         }
-        public function showWeights($force = false){
-            if ($this->isVerbose() || $force){
-                echo "<hr>";
-                echo "<br />Weights: <pre>".print_r($this->edgeWeight, true)."</pre>";
-                echo "<br />Thresholds: <pre>".print_r($this->nodeThreshold, true)."</pre>";
-            }
-        }
-        public function setVerbose($isVerbose){
-            $this->isVerbose = $isVerbose;
-        }
-        public function isVerbose(){
-            return $this->isVerbose;
-        }
         public function load($filename){
             if (file_exists($filename)){
                 $data = parse_ini_file($filename);
-                if (array_key_exists("edges", $data) && array_key_exists("thresholds", $data)){
+                if (array_key_exists("edges", $data)){
                     $this->initWeights();
                     $this->edgeWeight = unserialize($data['edges']);
-                    $this->nodeThreshold = unserialize($data['thresholds']);
+                    $this->nodeBias = unserialize($data['bias']);
                     $this->weightsInitialized = true;
                     if (array_key_exists("training_data", $data) && array_key_exists("control_data", $data)){
                         $this->trainDataID = unserialize($data['training_data']);
@@ -172,7 +180,7 @@
             if ($f){
                 fwrite($f, "[weights]");
                 fwrite($f, "\r\nedges = \"".serialize($this->edgeWeight)."\"");
-                fwrite($f, "\r\nthresholds = \"".serialize($this->nodeThreshold)."\"");
+                fwrite($f, "\r\nbias = \"".serialize($this->nodeBias)."\"");
                 fwrite($f, "\r\n");
                 fwrite($f, "[identifiers]");
                 fwrite($f, "\r\ntraining_data = \"".serialize($this->trainDataID)."\"");
@@ -188,10 +196,6 @@
         public function train($maxEpochs = 500, $maxError = 0.01){
             if (!$this->weightsInitialized){
                 $this->initWeights();
-            }
-            if ($this->isVerbose()){
-                echo "<table>";
-                echo "<tr><th>#</th><th>error(trainingdata)</th><th>error(controldata)</th><th>slope(error(controldata))</th></tr>";
             }
             $epoch = 0;
             $errorControlSet = array ();
@@ -218,14 +222,6 @@
                 } else {
                     $controlset_msg = "";
                 }
-                if ($this->isVerbose()){
-                    echo "<tr><td><b>$epoch</b></td><td>$squaredError</td><td>$controlset_msg";
-                    echo "<script type='text/javascript'>window.scrollBy(0,100);</script>";
-                    echo "</td><td>$slope</td></tr>";
-                    echo "</td></tr>";
-                    //flush();
-                    //ob_flush();
-                }
                 $stop_1 = $squaredError <= $maxError || $squaredErrorControlSet <= $maxError;
                 $stop_2 = $epoch ++ > $maxEpochs;
                 $stop_3 = $slope > 0;
@@ -234,9 +230,6 @@
             $this->setErrorTrainingSet($squaredError);
             $this->setErrorControlSet($squaredErrorControlSet);
             $this->setTrainingSuccessful($stop_1);
-            if ($this->isVerbose()) {
-                echo "</table>";
-            }
             return $stop_1;
         }
         private function setEpoch($epoch){
@@ -290,10 +283,11 @@
             for ($layer = 1; $layer < $this->layerCount; $layer ++){
                 $prev_layer = $layer -1;
                 for ($node = 0; $node < $this->nodeCount[$layer]; $node ++){
-                    $this->nodeThreshold[$layer][$node] = $this->getRandomWeight($layer);
                     for ($prev_index = 0; $prev_index < $this->nodeCount[$prev_layer]; $prev_index ++){
                         $this->edgeWeight[$prev_layer][$prev_index][$node] = $this->getRandomWeight($prev_layer);
+                        $this->nodeBias[$prev_layer][$node] = $this->getRandomWeight($prev_layer);
                         $this->previousWeightCorrection[$prev_layer][$prev_index] = 0.0;
+                        $this->biasWeightCorrection[$prev_layer][$node] = 0.0;
                     }
                 }
             }
@@ -318,6 +312,16 @@
                         }
                         $nodeValue = $this->nodeValue[$layer][$node];
                         $errorgradient[$layer][$node] = $this->derivativeActivation($nodeValue) * $productsum;
+                        if($node == 0){ // Bias Neuron
+                            $productsum = 0;
+                            for ($next_index = 0; $next_index < ($this->nodeCount[$next_layer]); $next_index ++){
+                                $_errorgradient = $errorgradient[$next_layer][$next_index];
+                                $_edgeWeight = $this->edgeWeight[$layer][$this->nodeCount[$layer]][$next_index];
+                                $productsum = $productsum + $_errorgradient * $_edgeWeight;
+                            }
+                            $nodeValue = $this->biasValue[$layer];
+                            $errorgradient[$layer][$this->nodeCount[$layer]] = $this->derivativeActivation($nodeValue) * $productsum;
+                        }
                     }
                     $prev_layer = $layer -1;
                     $learning_rate = $this->getlearningRate($prev_layer);
@@ -325,14 +329,18 @@
                         $nodeValue = $this->nodeValue[$prev_layer][$prev_index];
                         $edgeWeight = $this->edgeWeight[$prev_layer][$prev_index][$node];
                         $weight_correction = $learning_rate * $nodeValue * $errorgradient[$layer][$node];
-                        $prev_weightcorrection = @$this->previousWeightCorrection[$layer][$node];
+                        $prev_weightcorrection = $this->previousWeightCorrection[$layer][$node];
                         $new_weight = $edgeWeight + $weight_correction + $momentum * $prev_weightcorrection;
                         $this->edgeWeight[$prev_layer][$prev_index][$node] = $new_weight;
                         $this->previousWeightCorrection[$layer][$node] = $weight_correction;
                     }
-                    $threshold_correction = $learning_rate * -1 * $errorgradient[$layer][$node];
-                    $new_threshold = $this->nodeThreshold[$layer][$node] + $threshold_correction;
-                    $this->nodeThreshold[$layer][$node] = $new_threshold;
+                    $biasValue = $this->biasValue[$prev_layer];
+                    $biasWeight = $this->nodeBias[$prev_layer][$node];
+                    $weight_correction = $learning_rate * $biasValue * $errorgradient[$layer][$node];
+                    $prev_weightcorrection = $this->biasWeightCorrection[$layer][$node];
+                    $new_weight = $edgeWeight + $weight_correction + $momentum * $prev_weightcorrection;
+                    $this->biasWeight[$prev_layer][$node] = $new_weight;
+                    $this->biasWeightCorrection[$layer][$node] = $weight_correction;
                 }
             }
         }
