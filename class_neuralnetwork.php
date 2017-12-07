@@ -1,376 +1,258 @@
 <?php
-    class NeuralNetwork {
-        protected $nodeCount = array ();
-        protected $nodeValue = array ();
-        protected $nodeBias = array ();
-        protected $biasValue = array ();
-        protected $edgeWeight = array ();
-        protected $learningRate = array (0.1);
+    class NeuralNetwork{
         protected $layerCount = 0;
-        protected $previousWeightCorrection = array ();
-        protected $biasWeightCorrection = array ();
-        protected $momentum = 0.8;
+        protected $neuronCount = array (); //neuronCount[layer]
+        protected $neuronValue = array (); //neuronValue[layer][index]
+        protected $neuronWeight = array (); //neuronWeight[layer][source][destination]
+        protected $neuronThreshold = array (); //neuronThreshold[layer][index]
+        protected $neuronWeightCorrection = array (); //neuronWeightCorrection[layer][index]
+
+        //Parameters
+        protected $epoch = 500;
+        protected $learningRate = array (0.1); //learningRate[layer]
+        protected $momentum = 0.8
         protected $weightsInitialized = false;
-
-        public $trainInputs = array ();
-        public $trainOutput = array ();
-        public $trainDataID = array ();
-
-        public $controlInputs = array ();
-        public $controlOutput = array ();
-        public $controlDataID = array ();
-
-        protected $epoch;
-        protected $errorTrainingset;
-        protected $errorControlset;
         protected $success;
+        protected $useBiasNeuron = false;
+        protected $useSigmoidActivation = false;
 
-        public function __construct($nodeCount){
-            if (!is_array($nodeCount)){
-                $nodeCount = func_get_args();
+        //Data
+        protected $trainingData = array (); //trainingData[layer][index]
+        protected $errorTrainingSet = array ();
+
+        //NeuralNetwork(InputCount, HiddenCount, ..., OutputCount)
+        public function __construct($value){
+            if (!is_array($value)){
+                $value = func_get_args();
             }
-            $this->nodeCount = $nodeCount;
-            $this->layerCount = count($this->nodeCount);
-            $this->nodeBias = 
-            for($layer = 0; $layer <= $this->layerCount - 2; $layer++){
-                $this->setBias($layer, 1.0); //initialize bias nodes
+            $this->neuronCount = $value;
+            $this->layerCount = count($this->neuronCount);
+            for($layer = 0; $layer < $this->layerCount - 1; $layer++){
+                $this->setBias($layer, 1.0); //Adds Bias Neuron per input/hidden layer.
             }
         }
 
-        public function setBias($layer, $value){
-            $biasValue[$layer] = $value;
+        //Parameter Functions
+        public function setEpoch($value){
+            $this->epoch = $value;
         }
 
-        public function getNodeWeight($layer, $nodeSource, $nodeDestination ){
-            return $this->edgeWeight[$layer][$nodeSource][$nodeDestination];
+        public function getEpoch(){
+            return $this->epoch;
         }
 
-        public function getBiasWeight($layer, $nodeDestination){
-            return $this->nodeBias[$layer][$nodeDestination];
-        }
-
-        public function getBiasValue($layer){
-            return $this->biasValue[$layer];
-        }
-
-        public function getNodeCount($layer){
-            return $this->nodeCount[$layer];
-        }
-
-        public function getNodeValue($layer, $node){
-            return $this->nodeValue[$layer][$node];
-        }
-        public function export(){
-            return array(
-                'layerCount' => $this->layerCount,
-                'nodeCount' => $this->nodeCount,
-                'edgeWeight' => $this->edgeWeight,
-                'nodeBias' => $this->nodeBias,
-                'biasValue' => $this->biasValue,
-                'learningRate' => $this->learningRate,
-                'momentum' => $this->momentum,
-                'weightsInitialized' => $this->weightsInitialized,
-            );
-        }
-        public function import($nn_array){
-            foreach ($nn_array as $key => $value){
-                $this->$key = $value;
+        public function setLearningRate($value){
+            if(!is_array($value)){
+                $value = func_get_args();
             }
-            return $this;
+            $this->learningRate = $value;
         }
-        public function setLearningRate($learningRate){
-            if (!is_array($learningRate)){
-                $learningRate = func_get_args();
-            }
-            $this->learningRate = $learningRate;
-        }
+
         public function getLearningRate($layer){
-            if (array_key_exists($layer, $this->learningRate)){
+            if(array_key_exists($layer, $this->learningRate)){
                 return $this->learningRate[$layer];
             }
             return $this->learningRate[0];
         }
-        public function setMomentum($momentum){
-            $this->momentum = $momentum;
+
+        public function setMomentum($value){
+            $this->momentum = $value;
         }
+
         public function getMomentum(){
             return $this->momentum;
         }
-        public function calculate($input){
-            foreach ($input as $index => $value){
-                $this->nodeValue[0][$index] = $value;
-            }
-            for ($layer = 1; $layer < $this->layerCount; $layer ++){
-                $prev_layer = $layer -1;
-                for ($node = 0; $node < ($this->nodeCount[$layer]); $node ++){
-                    $node_value = 0.0;
-                    for ($prev_node = 0; $prev_node < ($this->nodeCount[$prev_layer]); $prev_node ++) {
-                        $inputnode_value = $this->nodeValue[$prev_layer][$prev_node];
-                        $edge_weight = $this->edgeWeight[$prev_layer][$prev_node][$node];
-                        $node_value = $node_value + ($inputnode_value * $edge_weight);
-                    }
-                    $bias_value = ($biasValue[$prev_layer] * $nodeBias[$prev_layer][$node])
-                    $node_value = $node_value + $bias_value;
-                    $node_value = $this->activation($node_value);
-                    $this->nodeValue[$layer][$node] = $node_value;
-                }
-            }
-            return $this->nodeValue[$this->layerCount - 1];
-        }
-        protected function activation($value){
-            return tanh($value);
-            // return (1.0 / (1.0 + exp(- $value))); Sigmoid Activation
-        }
-        protected function derivativeActivation($value){
-            $tanh = tanh($value);
-            return 1.0 - $tanh * $tanh;
-            //return $value * (1.0 - $value); Derivative Sigmoid Activation
-        }
-        public function addTestData($input, $output, $id = null){
-            $index = count($this->trainInputs);
-            foreach ($input as $node => $value){
-                $this->trainInputs[$index][$node] = $value;
-            }
-            foreach ($output as $node => $value){
-                $this->trainOutput[$index][$node] = $value;
-            }
-            $this->trainDataID[$index] = $id;
-        }
-        public function getTestDataIDs(){
-            return $this->trainDataID;
-        }
-        public function addControlData($input, $output, $id = null){
-            $index = count($this->controlInputs);
-            foreach ($input as $node => $value) {
-                $this->controlInputs[$index][$node] = $value;
-            }
 
-            foreach ($output as $node => $value){
-                $this->controlOutput[$index][$node] = $value;
-            }
+        public function setBias($layer, $value){
+            $neuron = $this->neuronCount[$layer];
+            $this->neuronValue[$layer][$neuron] = value;
+        }
 
-            $this->controlDataID[$index] = $id;
-        }
-        public function getControlDataIDs(){
-            return $this->controlDataID;
-        }
-        public function load($filename){
-            if (file_exists($filename)){
-                $data = parse_ini_file($filename);
-                if (array_key_exists("edges", $data)){
-                    $this->initWeights();
-                    $this->edgeWeight = unserialize($data['edges']);
-                    $this->nodeBias = unserialize($data['bias']);
-                    $this->weightsInitialized = true;
-                    if (array_key_exists("training_data", $data) && array_key_exists("control_data", $data)){
-                        $this->trainDataID = unserialize($data['training_data']);
-                        $this->controlDataID = unserialize($data['control_data']);
-                        $this->controlInputs = array ();
-                        $this->controlOutput = array ();
-                        $this->trainInputs = array ();
-                        $this->trainOutput = array ();
-                    }
-                    return true;
-                }
-            }
-            return false;
-        }
-        public function save($filename){
-            $f = fopen($filename, "w");
-            if ($f){
-                fwrite($f, "[weights]");
-                fwrite($f, "\r\nedges = \"".serialize($this->edgeWeight)."\"");
-                fwrite($f, "\r\nbias = \"".serialize($this->nodeBias)."\"");
-                fwrite($f, "\r\n");
-                fwrite($f, "[identifiers]");
-                fwrite($f, "\r\ntraining_data = \"".serialize($this->trainDataID)."\"");
-                fwrite($f, "\r\ncontrol_data = \"".serialize($this->controlDataID)."\"");
-                fclose($f);
-                return true;
-            }
-            return false;
-        }
-        public function clear(){
-            $this->initWeights();
-        }
-        public function train($maxEpochs = 500, $maxError = 0.01){
-            if (!$this->weightsInitialized){
-                $this->initWeights();
-            }
-            $epoch = 0;
-            $errorControlSet = array ();
-            $avgErrorControlSet = array ();
-            $sample_count = 10;
-            do {
-                for ($i = 0; $i < count($this->trainInputs); $i ++){
-                    $index = mt_rand(0, count($this->trainInputs) - 1);
-                    $input = $this->trainInputs[$index];
-                    $desired_output = $this->trainOutput[$index];
-                    $output = $this->calculate($input);
-                    $this->backpropagate($output, $desired_output);
-                }
-                //set_time_limit(300);
-                $squaredError = $this->squaredErrorEpoch();
-                if ($epoch % 2 == 0){
-                    $squaredErrorControlSet = $this->squaredErrorControlSet();
-                    $errorControlSet[] = $squaredErrorControlSet;
-                    if (count($errorControlSet) > $sample_count){
-                        $avgErrorControlSet[] = array_sum(array_slice($errorControlSet, -$sample_count)) / $sample_count;
-                    }
-                    list ($slope, $offset) = $this->fitLine($avgErrorControlSet);
-                    $controlset_msg = $squaredErrorControlSet;
-                } else {
-                    $controlset_msg = "";
-                }
-                $stop_1 = $squaredError <= $maxError || $squaredErrorControlSet <= $maxError;
-                $stop_2 = $epoch ++ > $maxEpochs;
-                $stop_3 = $slope > 0;
-            } while (!$stop_1 && !$stop_2 && !$stop_3);
-            $this->setEpoch($epoch);
-            $this->setErrorTrainingSet($squaredError);
-            $this->setErrorControlSet($squaredErrorControlSet);
-            $this->setTrainingSuccessful($stop_1);
-            return $stop_1;
-        }
-        private function setEpoch($epoch){
-            $this->epoch = $epoch;
-        }
-        public function getEpoch(){
-            return $this->epoch;
-        }
-        private function setErrorTrainingSet($error){
-            $this->errorTrainingset = $error;
-        }
-        public function getErrorTrainingSet(){
-            return $this->errorTrainingset;
-        }
-        private function setErrorControlSet($error){
-            $this->errorControlset = $error;
-        }
-        public function getErrorControlSet(){
-            return $this->errorControlset;
-        }
-        private function setTrainingSuccessful($success){
-            $this->success = $success;
-        }
-        public function getTrainingSuccessful(){
-            return $this->success;
-        }
-        private function fitLine($data){
-            $n = count($data);
-            if ($n > 1) {
-                $sum_y = 0;
-                $sum_x = 0;
-                $sum_x2 = 0;
-                $sum_xy = 0;
-                foreach ($data as $x => $y){
-                    $sum_x += $x;
-                    $sum_y += $y;
-                    $sum_x2 += $x * $x;
-                    $sum_xy += $x * $y;
-                }
-                $offset = ($sum_y * $sum_x2 - $sum_x * $sum_xy) / ($n * $sum_x2 - $sum_x * $sum_x);
-                $slope = ($n * $sum_xy - $sum_x * $sum_y) / ($n * $sum_x2 - $sum_x * $sum_x);
-                return array ($slope, $offset);
-            } else {
-                return array (0.0, 0.0);
-            }
-        }
-        private function getRandomWeight($layer){
+        protected function getRandomWeight($seed){
             return ((mt_rand(0, 1000) / 1000) - 0.5) / 2;
         }
-        private function initWeights(){
-            for ($layer = 1; $layer < $this->layerCount; $layer ++){
-                $prev_layer = $layer -1;
-                for ($node = 0; $node < $this->nodeCount[$layer]; $node ++){
-                    for ($prev_index = 0; $prev_index < $this->nodeCount[$prev_layer]; $prev_index ++){
-                        $this->edgeWeight[$prev_layer][$prev_index][$node] = $this->getRandomWeight($prev_layer);
-                        $this->nodeBias[$prev_layer][$node] = $this->getRandomWeight($prev_layer);
-                        $this->previousWeightCorrection[$prev_layer][$prev_index] = 0.0;
-                        $this->biasWeightCorrection[$prev_layer][$node] = 0.0;
+
+        private function setErrorTrainingSet($value){
+            $this->errorTrainingData = $value;
+        }
+
+        public function getErrorTrainingSet(){
+            return $this->errorTrainingData;
+        }
+
+        private function setTrainingSuccessful($condition){
+            $this->success = $condition;
+        }
+
+        public function isTrainingSuccessful(){
+            return $this->success;
+        }
+
+        //Initialize Weights including Bias and Threshold
+        protected function initializeWeights(){
+            for($layer = 1; $layer < $this->layerCount; $layer++){
+                $previousLayer = $layer - 1;
+                for($neuron = 0; $neuron < $this->neuronCount[$layer]; $neuron++){
+                    $this->neuronThreshold[$layer][$neuron] = $this->getRandomWeight($layer);
+                    for($previousNeuron = 0; $previousNeuron <= $this->neuronCount[$previousLayer]+1; $previousNeuron++){
+                        $this->neuronWeight[$previousLayer][$previousNeuron][$neuron] = $this->getRandomWeight($layer);
+                        $this->neuronWeightCorrection[$previousLayer][$previousNeuron];
                     }
                 }
             }
+            $this->weightsInitialized = true;
         }
-        private function backpropagate($output, $desired_output){
-            $errorgradient = array ();
-            $outputlayer = $this->layerCount - 1;
+
+        public function addTrainingData($inputData, $outputData){
+            $index = count($this->trainingData[0]);
+            foreach($inputData as $neuron => $value){
+                $this->trainingData[0][$index][$neuron] = $value;
+            }
+            foreach ($outputData as $neuron => $value){
+                $this->trainingData[1][$index][$neuron] = $value;
+            }
+        }
+
+        //Calculation Functions
+        public function feedforward($inputData){
+            foreach ($inputData as $index => $value){
+                $this->neuronValue[0][$index] = $value;
+            }
+            for($layer = 1; $layer < $this->layerCount; $layer++){
+                $previousLayer = $layer - 1;
+                for($neuron = 0; $neuron < $this->neuronCount[$layer]; $neuron++){
+                    $weightedSum = 0.0;
+                    $previousNeuronCount = $this->neuronCount[$previousLayer];
+                    if($this->useBiasNeuron){
+                        $previousNeuronCount += 1;
+                    }
+                    for($previousNeuron = 0; $previousNeuron < $previousNeuronCount; $previousNeuron++){
+                        $value = $this->neuronValue[$previousLayer][$previousNeuron];
+                        $weight = $this->neuronWeight[$previousLayer][$previousNeuron];
+                        $weightedSum += $value * $weight
+                    }
+                    if(!$this->useBiasNeuron){
+                        $weightedSum -= $this->neuronThreshold[$layer][$neuron];
+                    }
+                    $this->neuronValue[$layer][$neuron] = $this->activation($weightedSum);
+                }
+            }
+            return $this->neuronValue[$this->layerCount - 1];
+        }
+
+        private function backpropagate($outputNet, $outputTarget){
+            $errorGradient = array ();
+            $outputLayer = $this->layerCount - 1;
             $momentum = $this->getMomentum();
-            for ($layer = $this->layerCount - 1; $layer > 0; $layer --){
-                for ($node = 0; $node < $this->nodeCount[$layer]; $node ++){
-                    if ($layer == $outputlayer) {
-                        $error = $desired_output[$node] - $output[$node];
-                        $errorgradient[$layer][$node] = $this->derivativeActivation($output[$node]) * $error;
-                    } 
+            for($layer = $outputLayer; $layer > 0; $layer--){
+                $neuronCount = $this->neuronCount[$layer];
+                for($neuron = 0; $neuron < $neuronCount; $neuron++){
+                    if($layer == $outputLayer){
+                        $error = $outputTarget[$neuron] - $outputNet[$neuron];
+                        $errorGradient[$layer][$neuron] = $this->derivativeActivation($output[$neuron]) * $error;
+                    }
                     else{
-                        $next_layer = $layer +1;
-                        $productsum = 0;
-                        for ($next_index = 0; $next_index < ($this->nodeCount[$next_layer]); $next_index ++){
-                            $_errorgradient = $errorgradient[$next_layer][$next_index];
-                            $_edgeWeight = $this->edgeWeight[$layer][$node][$next_index];
-                            $productsum = $productsum + $_errorgradient * $_edgeWeight;
+                        $nextLayer = $layer + 1;
+                        $productSum = 0.0;
+                        $nextNeuronCount = $this->neuronCount[$nextLayer];
+                        $previousNeuron = $neuron;
+                        if($this->useBiasNeuron){
+                            $previousNeuron += 1;
                         }
-                        $nodeValue = $this->nodeValue[$layer][$node];
-                        $errorgradient[$layer][$node] = $this->derivativeActivation($nodeValue) * $productsum;
-                        if($node == 0){ // Bias Neuron
-                            $productsum = 0;
-                            for ($next_index = 0; $next_index < ($this->nodeCount[$next_layer]); $next_index ++){
-                                $_errorgradient = $errorgradient[$next_layer][$next_index];
-                                $_edgeWeight = $this->edgeWeight[$layer][$this->nodeCount[$layer]][$next_index];
-                                $productsum = $productsum + $_errorgradient * $_edgeWeight;
-                            }
-                            $nodeValue = $this->biasValue[$layer];
-                            $errorgradient[$layer][$this->nodeCount[$layer]] = $this->derivativeActivation($nodeValue) * $productsum;
+                        for($nextNeuron = 0; $nextNeuron < $nextNeuronCount; $nextNeuron++){
+                            $neuronErrorGradient = $errorGradient[$nextLayer][$nextNeuron];
+                            $neuronWeight = $this->neuronWeight[$layer][$previousNeuron][$nextNeuron];
+                            $productSum += $neuronErrorGradient * $neuronWeight;
                         }
+                        $neuronValue = $this->neuronValue[$layer][$previousNeuron];
+                        $errorGradient[$layer][$neuron] = $this->derivativeActivation($neuronValue) * $productSum;
                     }
-                    $prev_layer = $layer -1;
-                    $learning_rate = $this->getlearningRate($prev_layer);
-                    for ($prev_index = 0; $prev_index < ($this->nodeCount[$prev_layer]); $prev_index ++){
-                        $nodeValue = $this->nodeValue[$prev_layer][$prev_index];
-                        $edgeWeight = $this->edgeWeight[$prev_layer][$prev_index][$node];
-                        $weight_correction = $learning_rate * $nodeValue * $errorgradient[$layer][$node];
-                        $prev_weightcorrection = $this->previousWeightCorrection[$layer][$node];
-                        $new_weight = $edgeWeight + $weight_correction + $momentum * $prev_weightcorrection;
-                        $this->edgeWeight[$prev_layer][$prev_index][$node] = $new_weight;
-                        $this->previousWeightCorrection[$layer][$node] = $weight_correction;
+                    $previousLayer = $layer - 1;
+                    $learningRate = $this->getLearningRate($previousLayer);
+                    $previousNeuronCount = $this->neuronCount[$previousLayer];
+                    if($this->useBiasNeuron){
+                        $previousNeuronCount += 1;
                     }
-                    $biasValue = $this->biasValue[$prev_layer];
-                    $biasWeight = $this->nodeBias[$prev_layer][$node];
-                    $weight_correction = $learning_rate * $biasValue * $errorgradient[$layer][$node];
-                    $prev_weightcorrection = $this->biasWeightCorrection[$layer][$node];
-                    $new_weight = $edgeWeight + $weight_correction + $momentum * $prev_weightcorrection;
-                    $this->biasWeight[$prev_layer][$node] = $new_weight;
-                    $this->biasWeightCorrection[$layer][$node] = $weight_correction;
+                    for($previousNeuron = 0; $previousNeuron < $previousNeuronCount; $previousNeuron++){
+                        $neuronValue = $this->neuronValue[$previousLayer][$previousNeuron];
+                        $neuronWeight = $this->neuronWeight[$previousLayer][$previousNeuron][$neuron];
+                        $weightCorrection = $learningRate * $neuronValue * $errorGradient[$layer][$neuron];
+                        $previousWeightCorrection = @$this->neuronWeightCorrection[$layer][$neuron];
+                        $newWeight = $neuronWeight + $weightCorrection + $momentum * $previousWeightCorrection;
+                        $this->neuronWeight[$previousLayer][$previousNeuron][$neuron];
+                        $this->previousWeightCorrection[$layer][$neuron];
+                    }
+                    if(!$this->useBiasNeuron){
+                        $thresholdCorrection = $learningRate * -1 * $errorGradient[$layer][$neuron];
+                        $this->neuronThreshold[$layer][$neuron] += $thresholdCorrection;
+                    }
                 }
             }
         }
-        private function squaredErrorEpoch(){
-            $RMSerror = 0.0;
-            for ($i = 0; $i < count($this->trainInputs); $i ++){
-                $RMSerror += $this->squaredError($this->trainInputs[$i], $this->trainOutput[$i]);
+
+        public function train($maxEpoch = $this->getEpoch(), $maxRMSE = 0.01){
+            if(!$this->weightsInitialized){
+                $this->initializeWeights();
             }
-            $RMSerror = $RMSerror / count($this->trainInputs);
-            return sqrt($RMSerror);
+            $rmse = 0.0;
+            $epoch = 0;
+            do{
+                for($i = 0; $i < count($this->trainingData[0]); $i++){
+                    $index = mt_rand(0, count($this->trainingData[0]) - 1);
+                    $inputData = $this->trainingData[0][$index];
+                    $outputTarget = $this->trainingData[1][$index];
+                    $outputNet = $this->feedforward($inputData);
+                    $this->backpropagate($outputNet, $outputTarget);
+                }
+                $rmse = $this->trainingSetRMSE();
+                $condition1 = $rmse <= $maxRMSE;
+                $condition2 = $epoch++ > $maxEpochs;
+            } while(!condition1 && !condition2);
+            $this->setEpoch($epoch);
+            $this->setErrorTrainingSet($rmse);
+            $this->setTrainingSuccessful(!condition1);
+            return $condition1;
         }
-        private function squaredErrorControlSet(){
-            if (count($this->controlInputs) == 0){
-                return 1.0;
+
+        //Root Mean Squared Error on Training set
+        private function trainingSetRMSE(){
+            $rmse = 0.0;
+            for($index = 0; $index < count($this->trainingData[0]); $index){
+                $rmse += $this->feedforwardRMSE($this->trainingData[0][$index], $this->trainingData[0][$index]);
             }
-            $RMSerror = 0.0;
-            for ($i = 0; $i < count($this->controlInputs); $i ++){
-                $RMSerror += $this->squaredError($this->controlInputs[$i], $this->controlOutput[$i]);
-            }
-            $RMSerror = $RMSerror / count($this->controlInputs);
-            return sqrt($RMSerror);
+            $rmse /= count($this->trainingData[0]);
+            return sqrt($rmse);
         }
-        private function squaredError($input, $desired_output){
-            $output = $this->calculate($input);
-            $RMSerror = 0.0;
-            foreach ($output as $node => $value){
-                $error = $output[$node] - $desired_output[$node];
-                $RMSerror = $RMSerror + ($error * $error);
+        
+        //Root Mean Squared Error per Feedforward
+        private function feedforwardRMSE($inputData, $outputTarget){
+            $outputNet = $this->feedforward($inputData);
+            $rmse = 0.0;
+            foreach($outputNet as $neuron => $value){
+                $error = $outputNet[$neuron] - $outputTarget[$neuron];
+                $rmse += ($error * $error);
             }
-            return $RMSerror;
+            return $rmse;
         }
+
+        protected function activation($value){
+            if($this->useSigmoidActivation){
+                return 1.0 / (1.0 + exp(- $value));
+            }
+            else{
+                return tanh($value);
+            }
+        }
+
+        protected function derivativeActivation($value){
+            if($this->useSigmoidActivation){
+                return $value * (1.0 - $value);
+            }
+            else{
+                $tanh = tanh($value);
+                return 1.0 - $tanh * $tanh;
+            }
+        }
+
     }
 ?>
