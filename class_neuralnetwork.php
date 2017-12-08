@@ -205,7 +205,7 @@
                 }
                 $rmse = $this->trainingSetRMSE();
                 $condition1 = $rmse <= $maxRMSE;
-                $condition2 = $epoch++ > $maxEpochs;
+                $condition2 = $epoch++ > $maxEpoch;
             } while(!$condition1 && !$condition2);
             $this->setEpoch($epoch);
             $this->setErrorTrainingSet($rmse);
@@ -216,7 +216,7 @@
         //Root Mean Squared Error on Training set
         private function trainingSetRMSE(){
             $rmse = 0.0;
-            for($index = 0; $index < count($this->trainingInput); $index){
+            for($index = 0; $index < count($this->trainingInput); $index++){
                 $rmse += $this->feedforwardRMSE($this->trainingInput[$index], $this->trainingOutput[$index]);
             }
             $rmse /= count($this->trainingInput);
